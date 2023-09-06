@@ -1,0 +1,49 @@
+package com.boku.cashtransactionservice.service;
+
+import org.springframework.stereotype.Service;
+
+import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ThreadLocalRandom;
+
+import static com.boku.cashtransactionservice.service.WithdrawalService.WithdrawalState.*;
+
+/**
+ * This class provides withdrawal capabilities
+ *
+ * <p>
+ * NOTE: The type of the amount parameter is Double to prevent changing its state, and to keep the consistency of account balance that was decreased
+ * */
+@Service
+public class WithdrawalServiceStub implements WithdrawalService {
+
+    private final ConcurrentMap<WithdrawalId, Withdrawal> requests = new ConcurrentHashMap<>();
+    @Override
+    public void requestWithdrawal(WithdrawalId id, Address address, Double amount) { // Please substitute T with preferred type
+        final var existing = requests.putIfAbsent(id, new Withdrawal(finalState(), finaliseAt(), address, amount));
+        if (existing != null && !Objects.equals(existing.address, address) && !Objects.equals(existing.amount, amount)) {
+            throw new IllegalStateException("Withdrawal request with id[%s] is already present".formatted(id));
+        }
+        //if the same request do nothing!!!!
+    }
+    private WithdrawalState finalState() {
+        return ThreadLocalRandom.current().nextBoolean() ? COMPLETED : FAILED;
+    }
+    private long finaliseAt() {
+        return System.currentTimeMillis() + ThreadLocalRandom.current().nextLong(1000, 10000);
+    }
+    @Override
+    public WithdrawalState getRequestState(WithdrawalId id) {
+        final var request = requests.get(id);
+        if (request == null)
+            throw new IllegalArgumentException("Request %s is not found".formatted(id));
+        return request.finalState();
+    }
+
+    record Withdrawal(WithdrawalState state, long finaliseAt, Address address, Double amount) {
+        public WithdrawalState finalState() {
+            return finaliseAt <= System.currentTimeMillis() ? state : PROCESSING;
+        }
+    }
+}
